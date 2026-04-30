@@ -54,11 +54,32 @@ This is especially true for small companies that don't have the capacity to empl
 
 1. Open `http://localhost:8501` in your browser
 2. Upload a `.xlsx` or `.csv` file using the sidebar
-3. Type a plain-English question - e.g. *"What were the top 5 products last month?"*
-4. Click **Show**
+3. Type a plain-English question - e.g. *"What is last week sales"*
+4. Click **Generate response**
 5. View the result and download as PDF or plain text
 
 ---
+## How to Run for developers
+
+1. The Requirements File (requirements.txt)
+Paste this into your requirements.txt file. These are the tools we need:
+    - Plaintext
+    - streamlit
+    - pandas
+    - requests
+    - python-dotenv
+2. run using git bash command
+    - Open the Terminal in VS Code - Press Ctrl +  ` (the backtick key) or go to Terminal > New Terminal.
+      - In the top-right corner of the terminal window, ensure the dropdown menu says bash. If it says powershell or cmd, click the arrow next to the + and select Git Bash.
+    - Navigate to Your Project Folder - cd /c/path/to/your/folder/ai_retail_analyst
+    - Activate the environment - source venv/Scripts/activate
+    - Verify Your Environment - pip install -r requirements.txt
+    - Run the Streamlit App - streamlit run app.py
+3. Summary of Commands (The "Quick Restart" List)
+Next time you open VS Code, just run these three lines in your Git Bash terminal:
+    - source venv/Scripts/activate
+    - streamlit run app.py
+
 
 ## License
 
