@@ -50,6 +50,18 @@ This is especially true for small companies that don't have the capacity to empl
 - [ ] Demo completed in under 2 minutes
 
 ---
+ 
+## Project Folder Structure
+```text
+AI-powered-Analysis-project/
+├── .env                  # Stores your API key securely
+├── requirements.txt      # List of libraries to install
+├── app.py                # Your main Streamlit code
+└── data/
+    └── Superstore_clean_sample data.csv  # Your test data
+```
+
+
 ## How to Use
 
 1. Open `http://localhost:8501` in your browser
