@@ -1,6 +1,6 @@
 # AI Data Assistant
 
-> AI-powered data analysis for small companies and non-technical staff - no formulas, no SQL, no friction.
+> AI-powered data analysis for small companies and non-technical staff
 
 ---
 
@@ -14,8 +14,7 @@
   - [Prerequisites](#prerequisites)
   - [Backend](#backend-fastapi)
   - [Frontend](#frontend-streamlit)
-- [License](#license)
-
+  
 ---
 
 ## Problem Statement
