@@ -31,55 +31,65 @@ This is especially true for small companies that don't have the capacity to empl
 - Time wasted on low-value tasks and missed business opportunities
 
 ---
-
 ## Objectives
 
 - **One-Click Analysis** - Users upload a standard `.xlsx` or `.csv` and receive a structured summary without writing a single formula
 - **Natural Language Reporting** - Deliver a final report in plain English, e.g. *"Your sales peaked on Wednesday because of Category X"*
-- **Zero Excel knowledge required** - Any user can get a professional audit and analysis just by clicking **Upload** and **Show**
+- **Zero Excel knowledge required** - Any user can get a professional audit and analysis just by clicking **Upload** ,**Chat** and **Generate**
 
 ---
 ## Definition of Done
-
-- [ ] User uploads a `.xlsx` or `.csv` successfully
-- [ ] System auto-cleans dirty data
-- [ ] System answers at least 5 test queries correctly
-- [ ] Plain-English report generated and downloadable
-- [ ] Tested by at least 3 non-technical users
-- [ ] Results returned in under 60 seconds
-- [ ] Demo completed in under 2 minutes
-
+- [ ] User uploads a .xlsx or .csv successfully.
+- [ ] System auto-cleans messy data.
+- [ ] System answers at least 5 test queries correctly.
+- [ ] Plain-English report generated based on mathematical facts.
+- [ ] Results returned in under 60 seconds.
+- [ ] Demo completed in under 2 minutes.
 ---
+
 ## How to Use
-
-1. Open `http://localhost:8501` in your browser
-2. Upload a `.xlsx` or `.csv` file using the sidebar
-3. Type a plain-English question - e.g. *"What is last week sales"*
-4. Click **Generate response**
-5. View the result and download as PDF or plain text
-
+1. Upload: Use the sidebar to upload a .csv or .xlsx file[cite: 7].
+2. Chat: Type a plain-English question in the chat input (e.g., "What were the total sales ?").
+3. Generate: The AI will generate a deterministic Python script, execute it, and provide a verified insight.
+4. Insight: View the result and continue the conversation.
 ---
 ## How to Run for developers
 
-1. The Requirements File (requirements.txt)
-Paste this into your requirements.txt file. These are the tools we need:
-    - Plaintext
-    - streamlit
-    - pandas
-    - requests
-    - python-dotenv
-2. run using git bash command
-    - Open the Terminal in VS Code - Press Ctrl +  ` (the backtick key) or go to Terminal > New Terminal.
-      - In the top-right corner of the terminal window, ensure the dropdown menu says bash. If it says powershell or cmd, click the arrow next to the + and select Git Bash.
-    - Navigate to Your Project Folder - cd /c/path/to/your/folder/ai_retail_analyst
-    - Activate the environment - source venv/Scripts/activate
-    - Verify Your Environment - pip install -r requirements.txt
-    - Run the Streamlit App - streamlit run app.py
-3. Summary of Commands (The "Quick Restart" List)
-Next time you open VS Code, just run these three lines in your Git Bash terminal:
-    - source venv/Scripts/activate
-    - streamlit run app.py
+This project is split into a **Frontend (Streamlit)** and a **Backend (FastAPI)**.
 
+### 1. Prerequisites
+Ensure you have a `.env` file in your **backend** directory:
+GOOGLE_API_KEY=your_actual_key_here 
+
+---
+### 2. Backend Setup
+
+Navigate to the backend folder: cd backend
+- Install dependencies: pip install -r requirements.txt
+- Start the server: python main.py
+- Runs on: http://127.0.0.1:8000
+
+Dependencies:
+
+FastAPI
+uvicorn
+google-generativeai
+pandas
+python-dotenv
+openpyxl
+
+### 3. Frontend Setup (Streamlit)
+- Navigate to the frontend folder: cd frontend
+- Install dependencies: pip install -r requirements.txt
+- Start the app: streamlit run app.py
+- Runs on: http://localhost:8501
+
+Dependencies:
+
+streamlit
+requests
+
+---
 
 ## License
 
@@ -87,4 +97,4 @@ MIT License - free to use, modify, and distribute.
 
 ---
 
-*Solo Project · Week 5 · AI Data Assistant*
+*Solo Project · AI Data Assistant*
