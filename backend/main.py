@@ -1,4 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 import pandas as pd
 import google.generativeai as genai
 import os
@@ -6,87 +8,199 @@ import io
 import traceback
 from dotenv import load_dotenv
 
+# Environment & App Setup
 load_dotenv()
 app = FastAPI()
 
-#API configuration
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-2.5-flash')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-MAX_RETRIES = 3
+# Model Configuration
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+generation_config = {
+    "temperature": 0,
+    "top_p": 1,
+    "top_k": 1,
+    "max_output_tokens": 2048,
+}
+
+model = genai.GenerativeModel(
+    model_name='gemini-2.5-flash',
+    generation_config=generation_config
+)
 
 @app.post("/analyze")
-async def analyze_data(file: UploadFile = File(...), prompt: str = Form(...)):
+async def analyze_data(
+    file: UploadFile = File(...), 
+    prompt: str = Form(...),
+    history: str = Form("") # New: Receive chat history
+):
     try:
-        # 1. Read file into memory
-        contents = await file.read()
+       # Read file with size check to prevent memory issues
+        MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB in bytes
+    
+        # Read a chunk to check size without loading the whole thing into RAM at once
+        contents = await file.read() 
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Max 200MB.")
+        
+        # Reset cursor so pandas can read it afterward
+        file_data = io.BytesIO(contents)
+
+        # ... proceed to pd.read_csv(file_data)
         if file.filename.endswith('.csv'):
             df = pd.read_csv(io.BytesIO(contents), encoding='latin-1')
-        elif file.filename.endswith(('.xls', '.xlsx')):
+        else:
             df = pd.read_excel(io.BytesIO(contents))
+            
+
+        # Audit data to identify messy columns (hidden spaces, $, % signs)
+        data_audit = {
+            "columns": df.columns.tolist(),
+            "sample_rows": df.head(2).to_dict(),
+            "dtypes": df.dtypes.astype(str).to_dict()
+        }
+
+        cleaning_prompt = f"""
+        You are a Data Cleaning Agent. Analyze this data profile: {data_audit}
         
-        # Initial prompt for the AI
-        current_prompt = f"""
-        You are a Data Scientist. DataFrame 'df' has columns: {df.columns.tolist()}.
-        Task: 
-        1. Clean the data (handle NaNs,missing values,format,types for numeric columns).
-        2. Answer: "{prompt}"
+        Write Python code to clean the DataFrame 'df':
+        1. Strip leading/trailing spaces from all column names and string cells.
+        2. Identify numeric columns currently stored as strings (with $, %, or commas) and convert them to floats.
+        3. Ensure no empty strings remain (convert to NaN).
         
-        Rules:
-        - Store final answer in 'result'.
-        - ONLY output code. No prose.
-        - If you encounter an error, fix it and try again. You have {MAX_RETRIES} attempts to get it right.
-        - If you can't answer the question with the data, set 'result' to a clear message explaining why.
-        - Always ensure the code is syntactically correct and can run without errors.
-        - If you need to perform calculations, create visualizations, or do any data manipulation, do it in the code. The user only sees the final 'result'.
-        - Remember, the user is not a programmer. They only want insights from their data, not technical details. Keep 'result' focused on the insight, not the code or process.
-        - If you encounter an error during execution, capture the full error message and include it in your next code attempt to help you debug.
-        - If after {MAX_RETRIES} attempts you still can't get it right, set 'result' to a message saying you couldn't analyze the data and include the last error message for transparency.
-        - Make sure to handle edge cases, such as empty data, all values being the same, or non-numeric data when numeric is expected.
-        - Make sure twice the data is cleaned before you attempt to answer the question. Cleaning is a crucial step and should not be overlooked.
-        - Make sure to consider the user's question carefully and ensure that your code is directly addressing it. If the question is ambiguous, make a reasonable assumption but clearly state it in the code comments.
-        - Think step by step and ensure that your code is logically structured to first clean the data, then perform any necessary analysis, and finally set the 'result' variable to the insight that directly answers the user's question.
-        - Make sure the cleaning process is robust and can handle common data issues such as missing values, outliers, and incorrect data types. This will ensure that the analysis is based on high-quality data and the insights are reliable.
-        - Make sure the data cleaning is accurate and thorough. This is a critical step that will impact the quality of the insights. Handle missing values appropriately, convert data types as needed, and ensure that the data is in a format suitable for analysis before attempting to answer the user's question.
-        - For the cleaning process, consider the following steps: 
-            - Standardizing formatting across datasets 
-            - Removing duplicate records  
-            - Eliminating spelling, naming conventions, or categorization inconsistencies 
-            - Validating data against rules and benchmarks.
-            never autofill missing values in numbers, instead analyze the pattern of missingness and decide on a case-by-case basis whether to drop those rows, fill them with a placeholder, or use another strategy. Always explain your reasoning in code comments.
+        RULES:
+        - Output ONLY valid Python code.
+        - Use 4-space indentation for any loops or conditionals.
+        - The final cleaned dataframe must remain as variable 'df'.
+        - Do NOT add any code for analysis or insights in this block. Focus solely on cleaning the data as per the instructions above.
+        - PII PROTECTION: If you detect Personal Identifiable Information (like specific Names, Emails, or Phone numbers), replace them with generic placeholders (e.g., [PERSON_A], [USER_EMAIL]) in the 'df' before returning it.
+        - If you encounter any columns that are completely empty or contain only null values, drop those columns from 'df'.
+
+        """
+        
+        clean_resp = model.generate_content(cleaning_prompt)
+        clean_code = clean_resp.text.strip().replace('```python', '').replace('```', '')
+        
+        # --- FIX FOR CLEANING BLOCK INDENTATION ---
+        clean_lines = clean_code.split('\n')
+        fixed_clean_lines = []
+        for line in clean_lines:
+            clean_line = line.rstrip()
+            # Fix missing colons in cleaning loops/conditionals
+            if (clean_line.startswith('for ') or clean_line.startswith('if ')) and not clean_line.endswith(':'):
+                fixed_clean_lines.append(clean_line + ':')
+            else:
+                fixed_clean_lines.append(line)
+        clean_code = '\n'.join(fixed_clean_lines)
+        # --- END FIX ---
+
+
+        # Execute cleaning with a safety scope
+        cleaning_scope = {"df": df, "pd": pd}
+        try:
+            exec(clean_code, {}, cleaning_scope)
+            df = cleaning_scope.get("df") 
+        except Exception as e:
+            print(f"Cleaning failed, proceeding with raw data: {e}")
+            # If cleaning fails, we keep the original df to avoid a total crash
+        # --- END OF CLEANING BLOCK ---
+
+        # 'No-Guessing' Logic with Context
+        code_prompt = f"""
+        You are a Deterministic Data Engine. 
+        DataFrame 'df' Columns: {df.columns.tolist()}
+        
+        CHAT HISTORY:
+        {history}
+        
+        CURRENT USER QUESTION: "{prompt}"
+        
+        TASK: Write Python code to calculate the exact answer for the CURRENT QUESTION. 
+        If the user says "them" or "that", refer to the CHAT HISTORY above to understand the context.
+        
+        CRITICAL RULES:
+        1. DO NOT estimate. Use the 'df' object.
+        2. Store the FINAL result in a variable named 'result'.
+        3. ONLY return valid Python code.
         """
 
-        raw_result = None
-        error_history = ""
-        
-        # --- THE VALIDATION LOOP ---
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Ask AI for code (include error history if this is a retry)
-                full_request = current_prompt + error_history
-                code_response = model.generate_content(full_request)
-                code = code_response.text.strip().replace('```python', '').replace('```', '')
 
-                # Execution Sandbox
+        error_log = ""
+        final_numeric_result = None
+        # Attempt to get the correct code with retries/ validation loop
+        for attempt in range(3):
+            try:
+                response = model.generate_content(code_prompt + error_log)
+                # Clean the response to ensure it is strictly code
+                code = response.text.strip().replace('```python', '').replace('```', '')
+
+                # --- ADD THIS FIX HERE ---
+                # This ensures common colon-omissions are fixed before execution
+                lines = code.split('\n')
+                fixed_lines = []
+                for line in lines:
+                    # If a line starts with 'for' or 'if' and doesn't end with a colon, add one
+                    clean_line = line.rstrip()
+                    if (clean_line.startswith('for ') or clean_line.startswith('if ')) and not clean_line.endswith(':'):
+                        fixed_lines.append(clean_line + ':')
+                    else:
+                        fixed_lines.append(line)
+                code = '\n'.join(fixed_lines)
+                # --- END OF FIX ---
+
+                # Execute in the trusted local scope
                 local_scope = {"df": df, "pd": pd}
                 exec(code, {}, local_scope)
                 
-                # If we get here, the code worked!
-                raw_result = local_scope.get("result")
-                break 
-
+                if "result" in local_scope:
+                    final_numeric_result = local_scope["result"]
+                    break
+                else:
+                    raise Exception("Variable 'result' was not defined in the code.")
+            
             except Exception as e:
-                # Capture the error and tell the AI what went wrong
-                error_msg = traceback.format_exc()
-                error_history = f"\n\nPrevious code failed with this error:\n{error_msg}\nPlease fix the code and try again."
-                if attempt == MAX_RETRIES - 1:
-                    raise Exception(f"AI could not fix the code after {MAX_RETRIES} attempts.")
+                error_log = f"\n\nRetry {attempt+1}: Your previous code failed with: {str(e)}. Fix it."
 
-        # 2. Convert raw result to Insight
-        insight_prompt = f"The user asked: '{prompt}'. The result was: '{raw_result}'. Give a professional insight. Hide the technical details."
-        insight_response = model.generate_content(insight_prompt)
+        # The Final Insight Logic
+        insight_prompt = f"""
+        User Question: {prompt}
+        Mathematical Result: {final_numeric_result}
         
+        Instruction: 
+        - Provide a 2-sentence professional insight based ONLY on the Mathematical Result above. 
+        - If the result is {final_numeric_result}, you MUST use that exact number.
+        - CRITICAL: Use standard English spacing. Do NOT concatenate words.
+        - Ensure there is a space after every comma and period.
+        - Do NOT add any assumptions or estimates beyond what the number directly indicates.
+        - If the result is a number, interpret it in a business context. For example, if the result is 1000, you might say "The total sales amount to $1000, which indicates...".
+        - If the result is a string, provide an insight based on that string. For example, if the result is "New York", you might say "The top-selling region is New York, suggesting...".
+        - ONLY return the insight text. No code or heavy technical explanations.
+        - If the result is not a valid number or string, respond with "The result is not interpretable for insights."
+        - ask the model to be very specific and avoid generic insights. For example, instead of saying "This is a good result", it should say "The total sales of $1000 suggest a strong performance in Q1, likely driven by the new marketing campaign."
+        - you tone should be professional and data-driven. Avoid vague language. Be specific about what the number means in a business context.
+        - use words like "suggests", "indicates", "implies" to connect the mathematical result to the insight, but do not make assumptions beyond what the number directly indicates.
+        - use words that non-technical business users would understand. For example, instead of saying "The mean sales is $1000", say "The average sales amount to $1000, which suggests a strong performance in that category."
+        - use the current date to make the insight timely. For example, "As of 2024, the total sales of $1000 suggest..."
+        - use the appropriate units if the result is a number. For example, if the result is 1000 and it represents sales in thousands, say "The total sales amount to $1 million..."
+        - if the result is a string that represents a category, say "The top-selling category is X, which suggests..., and the least-selling category is Y, which indicates..."
+        - if the result is a string that represents a date, say "The peak sales occurred
+        - if the user asks for a question out of the context like hi, how are you, the model should respond with "I am designed to provide insights based on the uploaded data. Please upload a file and ask a specific question about it. be polite and professional in your response. For example, you could say "What is the total sales for Q1?" or "Which region has the highest revenue?" 
+        - be also prepared for accurate follow-up questions. For example, if the user first asks "What is the total sales?" and then asks "how about by regions?", you should be able to provide insights for both questions based on the mathematical results.
+        """
+        
+        insight_response = model.generate_content(insight_prompt)
         return {"insight": insight_response.text}
 
     except Exception as e:
-        return {"insight": f"I tried to analyze your data but encountered a persistent issue: {str(e)}"}
+        # Debug print to catch connection issues in terminal
+        print(f"Backend Error: {str(e)}")
+        return {"insight": f"System Error: {str(e)}"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
