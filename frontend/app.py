@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+from docx import Document
+from io import BytesIO
 
 # Page configuration
 st.set_page_config(
@@ -30,6 +32,23 @@ st.markdown(
         }
     [data-testid="stFileUploaderDropzone"] button::after { content: "Upload File"; text-indent: 0; line-height: initial; display: block; }
 
+   .stDownloadButton > button {
+        width: 100%;
+        border-radius: 8px;
+        color: #ffffff;
+        background-color: #4CAF50; /* Modern Green */
+        border: none;
+        padding: 0.6rem;
+        transition: all 0.3s ease;
+        font-weight: 600;
+    }
+    .stDownloadButton > button:hover {
+        background-color: #45a049;
+        border: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transform: translateY(-1px);
+        color: #ffffff;
+    }
     .stChatMessage {
         border: 2px solid #cbd5e1 !important; 
         border-radius: 8px !important;
@@ -69,10 +88,31 @@ st.markdown(
         background-color: transparent !important;
         align-self: center !important;
     }
-    
-  
+    /* 4. Improve overall font and spacing */
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        color: #1E1E1E;
+    }
     </style>""", unsafe_allow_html=True
 )
+
+# --- Helper Function for Word Export ---
+def generate_docx(messages):
+    doc = Document()
+    doc.add_heading('AI Data Analysis Report', 0)
+    
+    for msg in messages:
+        role = "User" if msg["role"] == "user" else "AI Assistant"
+        p = doc.add_paragraph()
+        p.add_run(f"{role}: ").bold = True
+        p.add_run(msg["content"])
+    
+    # Save to a buffer so we don't need to save a real file on the server
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
 
 # --- SIDEBAR: LOGO & UPLOAD ---
 with st.sidebar:
@@ -80,6 +120,22 @@ with st.sidebar:
     st.markdown("Your AI Data Assistant")
     st.markdown("---")
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx", "xls"])
+
+# Check if there are any messages to download
+if "messages" in st.session_state and st.session_state.messages:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Export Results")
+    
+    # Generate the Word file
+    docx_file = generate_docx(st.session_state.messages)
+    
+    st.sidebar.download_button(
+        label="📄 Download Report (.docx)",
+        data=docx_file,
+        file_name="analysis_report.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        use_container_width=True
+    )
     st.markdown("---")
 
 # --- MAIN PAGE: PROJECT NAME ---
