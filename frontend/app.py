@@ -87,57 +87,44 @@ st.title(" 📊 AI Data Assistant")
 st.markdown("##### *Transforming raw data into deterministic business insights.*")
 
 # --- CHAT INITIALIZATION ---
+# 1. Initialize chat history in session state if it doesn't exist
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display chat history from session state
+# 2. Display all previous messages from history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if uploaded_file:
-    # Convert bytes to MB for size check
-    file_size_mb = uploaded_file.size / (1024 * 1024)
-    if file_size_mb > 200:  # Set your limit here (e.g., 10MB)
-        st.error(f"File too large! Max limit is 200MB. Your file is {file_size_mb:.2f}MB.")
-        uploaded_file = None # Reset the file
-    # --- CHAT INPUT ---
-    if prompt := st.chat_input("Ask a question about your data..."):
-        # Add user message to history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# 3. Chat Input Logic
+if prompt := st.chat_input("Ask about your data..."):
+    # Add user message to UI and history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-        # --- BACKEND CALL ---
-        with st.chat_message("assistant"):
-            with st.spinner("Analyzing data..."):
-                files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+    # Prepare data for Backend
+    with st.spinner("Analyzing..."):
+        # Format history string for the AI's context
+        history_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]])
+        
+        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+        data = {"prompt": prompt, "history": history_context}
+
+        try:
+            response = requests.post("http://127.0.0.1:8000/analyze", files=files, data=data)
+            
+            if response.status_code == 200:
+                insight = response.json()["insight"]
                 
-                # --- NEW: Convert history to a single string for the AI ---
-                history_context = ""
-                for msg in st.session_state.messages[:-1]:
-                    # Adding extra newlines ensures the AI sees clear breaks between past answers[cite: 7]
-                    history_context += f"{msg['role'].upper()}: {msg['content']}\n\n"
-                
-                data = {
-                    "prompt": prompt,
-                    "history": history_context # Send history to backend
-                }
-                
-                try:
-                    response = requests.post("http://127.0.0.1:8000/analyze", files=files, data=data)
-                    # ... (rest of the response handling remains the same)
-                    
-                    if response.status_code == 200:
-                        insight = response.json()["insight"]
-                        st.markdown(insight)
-                        # Store assistant response in history
-                        st.session_state.messages.append({"role": "assistant", "content": insight})
-                    else:
-                        st.error(f"Backend Error: {response.text}")
-                        
-                except Exception as e:
-                    st.error(f"Connection Error: {e}")
+                # Add assistant response to UI and history
+                with st.chat_message("assistant"):
+                    st.markdown(insight)
+                st.session_state.messages.append({"role": "assistant", "content": insight})
+            else:
+                st.error(f"Backend Error: {response.text}")
+        except Exception as e:
+            st.error(f"Connection Error: {e}")
 else:
     # Welcome screen before file upload
     st.markdown("""
