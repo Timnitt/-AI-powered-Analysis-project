@@ -4,11 +4,7 @@ from docx import Document
 from io import BytesIO
 
 # Page configuration
-st.set_page_config(
-    page_title="AI Data Assistant",
-    page_icon="📊",
-    layout="wide" 
-)
+st.set_page_config(page_title="AI Data Assistant", page_icon="📊", layout="wide")
 
 # Style the app with custom CSS
 st.markdown(
@@ -93,20 +89,22 @@ st.markdown(
         font-family: 'Inter', sans-serif;
         color: #1E1E1E;
     }
-    </style>""", unsafe_allow_html=True
+    </style>""",
+    unsafe_allow_html=True,
 )
+
 
 # --- Helper Function for Word Export ---
 def generate_docx(messages):
     doc = Document()
-    doc.add_heading('AI Data Analysis Report', 0)
-    
+    doc.add_heading("AI Data Analysis Report", 0)
+
     for msg in messages:
         role = "User" if msg["role"] == "user" else "AI Assistant"
         p = doc.add_paragraph()
         p.add_run(f"{role}: ").bold = True
         p.add_run(msg["content"])
-    
+
     # Save to a buffer so we don't need to save a real file on the server
     buffer = BytesIO()
     doc.save(buffer)
@@ -119,22 +117,24 @@ with st.sidebar:
     st.image("logo.png", width=120)
     st.markdown("Your AI Data Assistant")
     st.markdown("---")
-    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx", "xls"])
+    uploaded_file = st.file_uploader(
+        "Upload CSV or Excel file", type=["csv", "xlsx", "xls"]
+    )
 
 # Check if there are any messages to download
 if "messages" in st.session_state and st.session_state.messages:
     st.sidebar.markdown("---")
     st.sidebar.subheader("Export Results")
-    
+
     # Generate the Word file
     docx_file = generate_docx(st.session_state.messages)
-    
+
     st.sidebar.download_button(
         label="📄 Download Report (.docx)",
         data=docx_file,
         file_name="analysis_report.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        use_container_width=True
+        use_container_width=True,
     )
     st.markdown("---")
 
@@ -162,21 +162,29 @@ if prompt := st.chat_input("Ask about your data..."):
     # Prepare data for Backend
     with st.spinner("Analyzing..."):
         # Format history string for the AI's context
-        history_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]])
-        
+        history_context = "\n".join(
+            [f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]]
+        )
+
         files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
         data = {"prompt": prompt, "history": history_context}
 
         try:
-            response = requests.post("http://127.0.0.1:8000/analyze", files=files, data=data)
-            
+            response = requests.post(
+                "https://ai-data-assistant-backend.onrender.com/analyze",
+                files=files,
+                data=data,
+            )
+
             if response.status_code == 200:
                 insight = response.json()["insight"]
-                
+
                 # Add assistant response to UI and history
                 with st.chat_message("assistant"):
                     st.markdown(insight)
-                st.session_state.messages.append({"role": "assistant", "content": insight})
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": insight}
+                )
             else:
                 st.error(f"Backend Error: {response.text}")
         except Exception as e:
