@@ -192,6 +192,17 @@ python-dotenv
 ```
 
 ---
+#### Docker (optional)
+
+Run both services together with Docker Compose instead of setting up two separate virtual environments:
+
+```bash
+docker compose up --build
+```
+Frontend: http://localhost:8501
+Backend: http://localhost:8000
+
+---
 
 ## Triage Log
 
