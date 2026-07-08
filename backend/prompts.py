@@ -1,7 +1,9 @@
 """LLM prompt templates for AI Data Assistant."""
 
+
 def cleaning_prompt(data_audit: dict) -> str:
     return f"Write Python code to clean this DataFrame 'df': {data_audit}. Output ONLY code."
+
 
 def analysis_prompt(columns: list, history: str, question: str) -> str:
     return f"""
@@ -20,5 +22,8 @@ INSTRUCTION:
 4. Output ONLY valid Python code.
 """
 
+
 def insight_prompt(question: str, result) -> str:
-    return f"Question: {question}\nResult: {result}\nProvide 2-sentence business insight."
+    return (
+        f"Question: {question}\nResult: {result}\nProvide 2-sentence business insight."
+    )

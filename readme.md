@@ -8,34 +8,44 @@
 
 - [Problem Statement](#problem-statement)
 - [Objectives](#objectives)
+- [Scope (User Stories)](#scope-user-stories)
 - [Definition of Done](#definition-of-done)
 - [How to Use](#how-to-use)
 - [Developer Setup](#developer-setup)
   - [Prerequisites](#prerequisites)
   - [Backend](#backend-fastapi)
   - [Frontend](#frontend-streamlit)
-  
+- [Triage Log](#triage-log)
+
 ---
 
 ## Problem Statement
 
-Operational staff - sales, marketing, support, and managers- depend daily on data stored in spreadsheets and databases. But accessing that data requires Excel skills or SQL knowledge that most non-technical employees simply don't have. The result: dependence on manual analysis, long delays, and gut-feeling decisions.
+Operational staff - sales, marketing, support, and managers - depend daily on data stored in spreadsheets and databases. But accessing that data requires Excel skills or SQL knowledge that most non-technical employees simply don't have. The result: dependence on manual analysis, long delays, and gut-feeling decisions.
 
 This problem hits small companies hardest, where there's no dedicated data analyst to absorb the load.
 
 ### The Pain Points
 
-- Small businesses without data analysts struggle to perform even basic analysis
-- Non-technical staff spend **4–6 hours per week** just formatting and cleaning data before they can ask a single question
-- Over **80% of small business data** lives in dirty spreadsheets with inconsistent formatting, duplicates, or missing values
-- Fewer than **15% of staff** can use advanced Excel features like Pivot Tables, VLOOKUPs, or Power Query
-- Internal data teams report that **40–70% of incoming requests are simple queries** that shouldn't require specialist time
+> These figures are drawn from published industry research (linked in [Sources](#sources) below), not internal data. They're used to frame the size of the problem, not as claims about any specific customer.
+
+- Knowledge workers spend an estimated **30–50% of their time** acting as "data janitors" - cleaning, reformatting, and hunting for data across disconnected sources
+- Academic research on operational spreadsheets found that **94% of spreadsheets contain at least one error** (Panko, *What We Know About Spreadsheet Errors*)
+- In organizations without self-service analytics tools, analysts can spend **50–70% of their time** on one-off, ad-hoc requests rather than higher-value analysis
+- A large share of employees report only basic proficiency in Excel, meaning core features like PivotTables, VLOOKUP, and Power Query go largely unused day-to-day
 
 ### The Impact
 
 - Delayed decisions and reduced productivity across the business
 - Non-technical staff develop "data dread," defaulting to instinct over evidence
 - Low-value formatting tasks crowd out meaningful, strategic work
+
+### Sources
+
+- [Why Are Knowledge Workers Still Cleaning Data? – Reworked](https://www.reworked.co/digital-workplace/why-are-knowledge-workers-still-cleaning-data/)
+- [What We Know About Spreadsheet Errors – Panko, University of Hawai'i](http://panko.shidler.hawaii.edu/SSR/Mypapers/whatknow.htm)
+- [Avoiding Analyst Burnout: How to Streamline Ad Hoc Requests – Metabase](https://www.metabase.com/blog/ad-hoc-analysis-tips)
+- [An Analyst's Guide to Handling Ad-hoc Requests – OWOX](https://www.owox.com/blog/articles/analysts-guide-managing-one-off-ad-hoc-requests)
 
 ---
 
@@ -49,23 +59,64 @@ This problem hits small companies hardest, where there's no dedicated data analy
 
 ---
 
+## Scope (User Stories)
+
+Written from the perspective of the primary persona: a non-technical operational employee at a small business.
+
+### Must Have
+
+- As a user, I want to **upload a `.csv` or `.xlsx` file**, so that I can analyze my own data without asking IT or a data analyst for help.
+- As a user, I want to **ask questions in plain English**, so that I don't need to know Excel formulas or SQL.
+- As a user, I want the **AI's calculations to be mathematically verified** (run as real code, not guessed by the model), so that I can trust the numbers in a business decision.
+- As a user, I want a **plain-English insight**, not just a raw number, so that I understand what the result means for my business.
+
+### Should Have
+
+- As a user, I want to **ask follow-up questions** that reference earlier parts of the conversation, so that I can explore my data conversationally instead of starting over each time.
+- As a user, I want to **export my analysis session as a Word document**, so that I can share results with my manager or team.
+- As a user, I want to **see the maximum upload size before I upload**, so that I don't waste time uploading a file that will be rejected.
+
+### Could Have
+
+- As a user, I want to **see a chart alongside the written insight**, so that I can visually confirm trends.
+- As a user, I want to **save and reload past sessions**, so that I don't lose my analysis when I close the browser tab.
+- As a user, I want **automatic detection and flagging of data quality issues** (duplicates, missing values) before analysis, so that I understand how trustworthy my results are.
+
+### Won't Have (this iteration)
+
+- Multi-user accounts, authentication, and permissions
+- Persistent server-side storage of uploaded data (files are processed in-memory per request)
+- Real-time collaboration between multiple users on the same session
+- Support for data sources beyond flat files (e.g. live database connections)
+
+---
+
 ## Definition of Done
 
-- [ ] User can upload a `.xlsx` or `.csv` file successfully
-- [ ] System auto-cleans messy or inconsistent data
-- [ ] System answers at least 5 test queries correctly
-- [ ] Plain-English report generated from verified, mathematical facts
-- [ ] Results returned in under 60 seconds
-- [ ] End-to-end demo completable in under 2 minutes
+A feature is considered **done** when it meets all of the following acceptance criteria:
+
+- [ ] Code is merged to `main` and runs without errors on a clean install (`pip install -r requirements.txt`)
+- [ ] The feature has been manually tested against at least 5 representative user queries
+- [ ] Errors (bad file type, oversized file, malformed query) fail gracefully with a user-facing message - never a raw stack trace
+- [ ] No secrets, API keys, or hardcoded environment-specific URLs are committed to the repository
+- [ ] The README and/or Triage Log is updated to reflect any setup or behavior change
+- [ ] The end-to-end demo (upload → ask → insight) completes in under 2 minutes
 
 ---
 
 ## How to Use
 
-1. **Upload** - Use the sidebar to upload a `.csv` or `.xlsx` file
+1. **Upload** - Use the sidebar to upload a `.csv` or `.xlsx` file (max size: **200MB**)
 2. **Chat** - Type a plain-English question in the chat input (e.g. *"What were the total sales last month?"*)
 3. **Generate** - The AI generates a deterministic Python script, executes it, and returns a verified insight
 4. **Insights** - View the result and continue the conversation with follow-up questions
+5. **Export** - Download the full conversation as a `.docx` report from the sidebar
+
+**Example questions to try:**
+
+- *"What is the total sales?"*
+- *"What is the profit?"*
+- *"How many orders had a negative profit, and what were the top 3 loss-making products?"*
 
 ---
 
@@ -75,10 +126,20 @@ This project is split into a **Backend (FastAPI)** and a **Frontend (Streamlit)*
 
 ### Prerequisites
 
-Create a `.env` file inside the `backend/` directory:
+Create a `.env` file inside the `backend/` directory (see `backend/.env.example`):
 
 ```env
 GOOGLE_API_KEY=your_actual_key_here
+# Comma-separated list of allowed frontend origins for CORS
+ALLOWED_ORIGINS=http://localhost:8501
+```
+
+Get a key at [Google AI Studio](https://aistudio.google.com/apikey).
+
+Create a `.env` file inside the `frontend/` directory (see `frontend/.env.example`):
+
+```env
+BACKEND_URL=http://127.0.0.1:8000
 ```
 
 ---
@@ -98,11 +159,15 @@ Runs on: `http://127.0.0.1:8000`
 ```
 fastapi
 uvicorn
-google-generativeai
 pandas
 python-dotenv
+openai==1.12.0
+httpx==0.27.0
 openpyxl
+python-multipart
 ```
+
+The backend talks to Gemini via [Google's OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai), using the `openai` client pointed at `generativelanguage.googleapis.com` — not the `google-generativeai` SDK.
 
 ---
 
@@ -120,15 +185,23 @@ Runs on: `http://localhost:8501`
 
 ```
 streamlit
+pydantic
 requests
+python-docx
+python-dotenv
 ```
+
+---
+
+## Triage Log
+
+Problems encountered during development and how they were resolved are tracked in [`TRIAGE_LOG.md`](./TRIAGE_LOG.md).
 
 ---
 
 ## License
 
-MIT License — free to use, modify, and distribute.
+MIT License - free to use, modify, and distribute.
 
+Timnit
 ---
-
-*Solo Project · AI Data Assistant*
