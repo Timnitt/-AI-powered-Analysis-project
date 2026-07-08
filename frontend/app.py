@@ -1,7 +1,15 @@
-import streamlit as st
-import requests
-from docx import Document
+import os
 from io import BytesIO
+
+import requests
+import streamlit as st
+from docx import Document
+from dotenv import load_dotenv
+
+load_dotenv()
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+MAX_FILE_SIZE_MB = 200
+
 
 # Page configuration
 st.set_page_config(page_title="AI Data Assistant", page_icon="📊", layout="wide")
@@ -105,14 +113,13 @@ def generate_docx(messages):
         p.add_run(f"{role}: ").bold = True
         p.add_run(msg["content"])
 
-    # Save to a buffer so we don't need to save a real file on the server
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
 
-# --- SIDEBAR: LOGO & UPLOAD ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.image("logo.png", width=120)
     st.markdown("Your AI Data Assistant")
@@ -120,13 +127,12 @@ with st.sidebar:
     uploaded_file = st.file_uploader(
         "Upload CSV or Excel file", type=["csv", "xlsx", "xls"]
     )
+    st.caption(f"Max file size: {MAX_FILE_SIZE_MB}MB")
 
-# Check if there are any messages to download
 if "messages" in st.session_state and st.session_state.messages:
     st.sidebar.markdown("---")
     st.sidebar.subheader("Export Results")
 
-    # Generate the Word file
     docx_file = generate_docx(st.session_state.messages)
 
     st.sidebar.download_button(
@@ -138,59 +144,49 @@ if "messages" in st.session_state and st.session_state.messages:
     )
     st.markdown("---")
 
-# --- MAIN PAGE: PROJECT NAME ---
+# --- MAIN PAGE ---
 st.title(" 📊 AI Data Assistant")
 st.markdown("##### *Transforming raw data into deterministic business insights.*")
 
 # --- CHAT INITIALIZATION ---
-# 1. Initialize chat history in session state if it doesn't exist
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 2. Display all previous messages from history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 3. Chat Input Logic
 if prompt := st.chat_input("Ask about your data..."):
-    # Add user message to UI and history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    if uploaded_file is None:
+        st.error("Please upload a CSV or Excel file first.")
+    else:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-    # Prepare data for Backend
-    with st.spinner("Analyzing..."):
-        # Format history string for the AI's context
-        history_context = "\n".join(
-            [f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]]
-        )
-
-        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-        data = {"prompt": prompt, "history": history_context}
-
-        try:
-            response = requests.post(
-                "https://ai-data-assistant-backend.onrender.com/analyze",
-                files=files,
-                data=data,
+        with st.spinner("Analyzing..."):
+            history_context = "\n".join(
+                [f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]]
             )
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+            data = {"prompt": prompt, "history": history_context}
 
-            if response.status_code == 200:
-                insight = response.json()["insight"]
-
-                # Add assistant response to UI and history
-                with st.chat_message("assistant"):
-                    st.markdown(insight)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": insight}
+            try:
+                response = requests.post(
+                    f"{BACKEND_URL}/analyze", files=files, data=data
                 )
-            else:
-                st.error(f"Backend Error: {response.text}")
-        except Exception as e:
-            st.error(f"Connection Error: {e}")
+                if response.status_code == 200:
+                    insight = response.json()["insight"]
+                    with st.chat_message("assistant"):
+                        st.markdown(insight)
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": insight}
+                    )
+                else:
+                    st.error(f"Backend Error: {response.text}")
+            except Exception as e:
+                st.error(f"Connection Error: {e}")
 else:
-    # Welcome screen before file upload
     st.markdown("""
     ### Hi 👋 , Welcome to your AI Data Assistant.
     1. **Upload** your File using the sidebar on the left.
