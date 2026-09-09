@@ -2,7 +2,10 @@
 
 
 def cleaning_prompt(data_audit: dict) -> str:
-    return f"Write Python code to clean this DataFrame 'df': {data_audit}. Output ONLY code."
+    return (
+        f"Write Python code to clean this DataFrame 'df': "
+        f"{data_audit}. Output ONLY code."
+    )
 
 
 def analysis_prompt(columns: list, history: str, question: str) -> str:

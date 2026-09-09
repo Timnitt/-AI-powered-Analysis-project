@@ -1,0 +1,10 @@
+[lint]
+select = ["E", "F", "I", "B", "PIE", "RUF", "S"]
+ignore = [
+    "S102",   # exec() is intentional — AI-generated code execution is the core feature
+    "B008",   # FastAPI uses File(...)/Form(...) as defaults by design
+    "BLE001", # broad except is acceptable for best-effort data cleaning
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101"]

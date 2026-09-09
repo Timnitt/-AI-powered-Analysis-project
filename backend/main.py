@@ -55,9 +55,9 @@ def fix_python_syntax(code: str) -> str:
     fixed_lines = []
     for line in lines:
         clean_line = line.rstrip()
-        if (
-            clean_line.startswith("for ") or clean_line.startswith("if ")
-        ) and not clean_line.endswith(":"):
+        if clean_line.startswith(("for ", "if ")) and not clean_line.endswith(
+            ":"
+        ):
             fixed_lines.append(clean_line + ":")
         else:
             fixed_lines.append(line)
@@ -118,7 +118,7 @@ async def analyze_data(
         raise
     except Exception as e:
         logger.exception("Failed to analyze uploaded file")
-        return {"insight": f"System Error: {str(e)}"}
+        return {"insight": f"System Error: {e!s}"}
 
 
 if __name__ == "__main__":
