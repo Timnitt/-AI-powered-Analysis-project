@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
 from prompts import analysis_prompt, cleaning_prompt, insight_prompt
+from sandbox import SandboxTimeout, SandboxViolation, safe_exec
 
 load_dotenv()
 
@@ -97,8 +98,12 @@ async def analyze_data(
 
         cleaning_scope = {"df": df, "pd": pd}
         try:
-            exec(clean_code, {}, cleaning_scope)
+            safe_exec(clean_code, cleaning_scope)
             df = cleaning_scope.get("df", df)
+        except SandboxViolation as e:
+            logger.warning("Cleaning code blocked by sandbox: %s", e)
+        except SandboxTimeout:
+            logger.warning("Cleaning code timed out, using raw data")
         except Exception as e:
             logger.warning("Data cleaning step failed, continuing with raw data: %s", e)
 
@@ -108,7 +113,7 @@ async def analyze_data(
         code = fix_python_syntax(strip_code_fences(analysis_raw))
 
         local_scope = {"df": df, "pd": pd}
-        exec(code, {}, local_scope)
+        safe_exec(code, local_scope)
         final_numeric_result = local_scope.get("result", "No result")
 
         insight_text = get_ai_response(insight_prompt(prompt, final_numeric_result))
