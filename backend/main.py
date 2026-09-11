@@ -59,7 +59,10 @@ def get_ai_response(prompt_text: str) -> str:
         except Exception as e:
             if "429" in str(e) or "Too Many Requests" in str(e):
                 wait = min(5 * (attempt + 1), 30)
-                logger.info("Rate limited, waiting %ds (attempt %d/5)", wait, attempt + 1)
+                logger.info(
+                    "Rate limited, waiting %ds (attempt %d/5)",
+                    wait, attempt + 1,
+                )
                 time.sleep(wait)
             else:
                 raise
