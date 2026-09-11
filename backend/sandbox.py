@@ -78,7 +78,9 @@ SAFE_BUILTINS = {
     "None": None,
 }
 
-ALLOWED_MODULES = {"pandas", "numpy", "math", "datetime", "collections", "re"}
+ALLOWED_MODULES = {
+    "pandas", "numpy", "math", "datetime", "collections", "re", "matplotlib",
+}
 
 EXEC_TIMEOUT_SECONDS = 30
 

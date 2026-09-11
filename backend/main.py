@@ -1,7 +1,12 @@
+import base64
 import io
 import logging
 import os
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
 import uvicorn
 from dotenv import load_dotenv
@@ -9,7 +14,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
-from prompts import analysis_prompt, cleaning_prompt, insight_prompt
+from prompts import analysis_prompt, chart_prompt, cleaning_prompt, insight_prompt
 from sandbox import SandboxTimeout, SandboxViolation, safe_exec
 
 load_dotenv()
@@ -117,7 +122,26 @@ async def analyze_data(
         final_numeric_result = local_scope.get("result", "No result")
 
         insight_text = get_ai_response(insight_prompt(prompt, final_numeric_result))
-        return {"insight": insight_text}
+
+        chart_b64 = None
+        try:
+            chart_raw = get_ai_response(
+                chart_prompt(df.columns.tolist(), prompt, final_numeric_result)
+            )
+            chart_code = fix_python_syntax(strip_code_fences(chart_raw))
+            plt.close("all")
+            chart_scope = {"df": df, "pd": pd, "plt": plt}
+            safe_exec(chart_code, chart_scope)
+            fig = chart_scope.get("fig", plt.gcf())
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+            plt.close("all")
+            buf.seek(0)
+            chart_b64 = base64.b64encode(buf.getvalue()).decode()
+        except Exception as e:
+            logger.warning("Chart generation failed, returning text only: %s", e)
+
+        return {"insight": insight_text, "chart": chart_b64}
 
     except HTTPException:
         raise

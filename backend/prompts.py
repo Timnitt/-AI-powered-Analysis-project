@@ -30,3 +30,25 @@ def insight_prompt(question: str, result) -> str:
     return (
         f"Question: {question}\nResult: {result}\nProvide 2-sentence business insight."
     )
+
+
+def chart_prompt(columns: list, question: str, result) -> str:
+    return f"""
+You are a data visualization expert.
+DataFrame 'df' has columns: {columns}
+
+USER QUESTION: "{question}"
+COMPUTED RESULT: {result}
+
+Write Python code using matplotlib to create a chart that best visualizes
+the answer. Use 'df' (already loaded) and 'plt' (already imported).
+
+Rules:
+- Pick the most appropriate chart type (bar, line, pie, scatter, etc.).
+- Use plt.figure(figsize=(8, 5)) to start.
+- Add a clear title, axis labels, and clean styling.
+- Use plt.tight_layout() at the end.
+- Store the figure in a variable called 'fig' (fig = plt.gcf()).
+- Do NOT call plt.show().
+- Output ONLY valid Python code.
+"""
