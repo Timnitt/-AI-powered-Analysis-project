@@ -1,3 +1,4 @@
+import base64
 import os
 from io import BytesIO
 
@@ -155,6 +156,8 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message.get("chart"):
+            st.image(base64.b64decode(message["chart"]))
 
 if prompt := st.chat_input("Ask about your data..."):
     if uploaded_file is None:
@@ -176,12 +179,17 @@ if prompt := st.chat_input("Ask about your data..."):
                     f"{BACKEND_URL}/analyze", files=files, data=data
                 )
                 if response.status_code == 200:
-                    insight = response.json()["insight"]
+                    resp_data = response.json()
+                    insight = resp_data["insight"]
+                    chart_b64 = resp_data.get("chart")
                     with st.chat_message("assistant"):
                         st.markdown(insight)
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": insight}
-                    )
+                        if chart_b64:
+                            st.image(base64.b64decode(chart_b64))
+                    msg = {"role": "assistant", "content": insight}
+                    if chart_b64:
+                        msg["chart"] = chart_b64
+                    st.session_state.messages.append(msg)
                 else:
                     st.error(f"Backend Error: {response.text}")
             except Exception as e:
