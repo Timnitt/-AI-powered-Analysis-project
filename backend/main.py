@@ -48,7 +48,7 @@ MODEL_ID = "gemini-3.6-flash"
 
 
 def get_ai_response(prompt_text: str) -> str:
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             response = client.chat.completions.create(
                 model=MODEL_ID,
@@ -58,7 +58,9 @@ def get_ai_response(prompt_text: str) -> str:
             return response.choices[0].message.content
         except Exception as e:
             if "429" in str(e) or "Too Many Requests" in str(e):
-                time.sleep(2**attempt)
+                wait = min(5 * (attempt + 1), 30)
+                logger.info("Rate limited, waiting %ds (attempt %d/5)", wait, attempt + 1)
+                time.sleep(wait)
             else:
                 raise
     raise Exception("API rate limit exceeded. Please try again in a minute.")
@@ -118,6 +120,7 @@ async def analyze_data(
         except Exception as e:
             logger.warning("Data cleaning step failed, continuing with raw data: %s", e)
 
+        time.sleep(2)
         analysis_raw = get_ai_response(
             analysis_prompt(df.columns.tolist(), history, prompt)
         )
@@ -127,10 +130,12 @@ async def analyze_data(
         safe_exec(code, local_scope)
         final_numeric_result = local_scope.get("result", "No result")
 
+        time.sleep(2)
         insight_text = get_ai_response(insight_prompt(prompt, final_numeric_result))
 
         chart_b64 = None
         try:
+            time.sleep(2)
             chart_raw = get_ai_response(
                 chart_prompt(df.columns.tolist(), prompt, final_numeric_result)
             )
