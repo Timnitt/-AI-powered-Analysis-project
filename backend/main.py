@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 import os
+import time
 
 import matplotlib
 
@@ -47,12 +48,20 @@ MODEL_ID = "gemini-3.6-flash"
 
 
 def get_ai_response(prompt_text: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL_ID,
-        messages=[{"role": "user", "content": prompt_text}],
-        temperature=0,
-    )
-    return response.choices[0].message.content
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_ID,
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                time.sleep(2**attempt)
+            else:
+                raise
+    raise Exception("API rate limit exceeded. Please try again in a minute.")
 
 
 def fix_python_syntax(code: str) -> str:
