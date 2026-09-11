@@ -23,8 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-data-assistant")
 
 MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
-MODEL_ID = "google/gemini-2.5-flash"
-
+MODEL_ID = "gemini-3.6-flash"
 app = FastAPI()
 
 allowed_origins = [
@@ -44,7 +43,7 @@ client = OpenAI(
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     api_key=os.getenv("GOOGLE_API_KEY"),
 )
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-3.6-flash"
 
 
 def get_ai_response(prompt_text: str) -> str:
@@ -61,9 +60,7 @@ def fix_python_syntax(code: str) -> str:
     fixed_lines = []
     for line in lines:
         clean_line = line.rstrip()
-        if clean_line.startswith(("for ", "if ")) and not clean_line.endswith(
-            ":"
-        ):
+        if clean_line.startswith(("for ", "if ")) and not clean_line.endswith(":"):
             fixed_lines.append(clean_line + ":")
         else:
             fixed_lines.append(line)
