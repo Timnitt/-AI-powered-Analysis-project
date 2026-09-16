@@ -90,6 +90,19 @@
 
 ---
 
+## Try It Out
+
+A sample dataset is included in the [`sample_data/`](./sample_data/) folder — a Superstore sales CSV with columns like Sales, Profit, Category, Region, and more. Upload it to the app and try questions like:
+
+- *"What are the total sales?"*
+- *"What is the total profit?"*
+- *"Show total profit per category"*
+- *"Which region has the highest sales?"*
+- *"What are the top 5 most profitable products?"*
+- *"Compare sales and profit by region"*
+
+---
+
 ## Developer Setup
 
 ### Prerequisites
