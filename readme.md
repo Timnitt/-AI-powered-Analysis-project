@@ -8,6 +8,8 @@
 
 > *The live demo is hosted on Render's free tier — the first load may take 30–60 seconds while the server wakes up.*
 
+![Demo](demo.gif)
+
 ---
 
 ## Architecture
@@ -57,7 +59,7 @@
 | **Visualization** | Matplotlib (AI-generated charts) |
 | **Security** | 3-layer sandboxed `exec()` (blocklist + restricted builtins + timeout) |
 | **Export** | python-docx (Word reports) |
-| **Testing** | pytest (58 tests) + ruff linter |
+| **Testing** | pytest (76 tests) + ruff linter |
 | **CI/CD** | GitHub Actions (lint + test on every push) |
 | **Deployment** | Docker Compose · Render |
 
@@ -71,7 +73,7 @@
 - **Sandboxed Execution** — AI-generated code runs in a 3-layer security sandbox
 - **Conversation Memory** — Follow-up questions carry full chat history for contextual answers
 - **Word Export** — Download the full analysis session as a `.docx` report
-- **58 Unit Tests** — Full coverage across API, sandbox, prompts, and data quality
+- **76 Unit Tests** — Full coverage across API, sandbox, prompts, data quality, streaming, and eval
 
 ---
 
