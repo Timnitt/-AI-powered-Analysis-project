@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 from io import BytesIO
 
@@ -217,33 +218,69 @@ if prompt := st.chat_input("Ask about your data..."):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        with st.spinner("Analyzing..."):
-            history_context = "\n".join(
-                [f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]]
-            )
-            files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-            data = {"prompt": prompt, "history": history_context}
+        history_context = "\n".join(
+            [f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]]
+        )
+        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+        data = {"prompt": prompt, "history": history_context}
 
-            try:
+        try:
+            with st.status("Analyzing your data...", expanded=True) as status:
                 response = requests.post(
-                    f"{BACKEND_URL}/analyze", files=files, data=data
+                    f"{BACKEND_URL}/analyze-stream",
+                    files=files,
+                    data=data,
+                    stream=True,
+                    timeout=120,
                 )
-                if response.status_code == 200:
-                    resp_data = response.json()
-                    insight = resp_data["insight"]
-                    chart_b64 = resp_data.get("chart")
-                    with st.chat_message("assistant"):
-                        st.markdown(insight)
-                        if chart_b64:
-                            st.image(base64.b64decode(chart_b64))
-                    msg = {"role": "assistant", "content": insight}
-                    if chart_b64:
-                        msg["chart"] = chart_b64
-                    st.session_state.messages.append(msg)
-                else:
+                if response.status_code != 200:
                     st.error(f"Backend Error: {response.text}")
-            except Exception as e:
-                st.error(f"Connection Error: {e}")
+                    status.update(label="Analysis failed", state="error")
+                else:
+                    insight = None
+                    chart_b64 = None
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        text = line.decode("utf-8")
+                        if not text.startswith("data: "):
+                            continue
+                        event = json.loads(text[6:])
+
+                        if event["stage"] == "error":
+                            st.error(event["error"])
+                            status.update(
+                                label="Analysis failed", state="error"
+                            )
+                            break
+
+                        if event["stage"] == "complete":
+                            insight = event["insight"]
+                            chart_b64 = event.get("chart")
+                            status.update(
+                                label="Analysis complete!",
+                                state="complete",
+                                expanded=False,
+                            )
+                        else:
+                            step = event["step"]
+                            total = event["total"]
+                            st.write(
+                                f"**Step {step}/{total}:** "
+                                f"{event['stage']}..."
+                            )
+
+            if insight:
+                with st.chat_message("assistant"):
+                    st.markdown(insight)
+                    if chart_b64:
+                        st.image(base64.b64decode(chart_b64))
+                msg = {"role": "assistant", "content": insight}
+                if chart_b64:
+                    msg["chart"] = chart_b64
+                st.session_state.messages.append(msg)
+        except Exception as e:
+            st.error(f"Connection Error: {e}")
 else:
     st.markdown("""
     ### Hi 👋 , Welcome to your AI Data Assistant.

@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import logging
 import os
 import time
@@ -13,6 +14,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
 from prompts import analysis_prompt, chart_prompt, cleaning_prompt, insight_prompt
@@ -162,6 +164,101 @@ async def analyze_data(
     except Exception as e:
         logger.exception("Failed to analyze uploaded file")
         return {"insight": f"System Error: {e!s}"}
+
+
+@app.post("/analyze-stream")
+async def analyze_data_stream(
+    file: UploadFile = File(...),
+    prompt: str = Form(...),
+    history: str = Form(""),
+):
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File too large. Upload a file with size less than 200MB.",
+        )
+
+    filename = file.filename
+
+    def event(data: dict) -> str:
+        return f"data: {json.dumps(data)}\n\n"
+
+    def generate():
+        try:
+            file_data = io.BytesIO(contents)
+            if filename.endswith(".csv"):
+                df = pd.read_csv(file_data, encoding="latin-1")
+            else:
+                df = pd.read_excel(file_data)
+
+            yield event({"stage": "Cleaning data", "step": 1, "total": 4})
+            data_audit = {
+                "columns": df.columns.tolist(),
+                "dtypes": df.dtypes.astype(str).to_dict(),
+            }
+            clean_raw = get_ai_response(cleaning_prompt(data_audit))
+            clean_code = fix_python_syntax(strip_code_fences(clean_raw))
+            cleaning_scope = {"df": df, "pd": pd}
+            try:
+                safe_exec(clean_code, cleaning_scope)
+                df = cleaning_scope.get("df", df)
+            except (SandboxViolation, SandboxTimeout) as e:
+                logger.warning("Cleaning blocked/timed out: %s", e)
+            except Exception as e:
+                logger.warning("Cleaning failed: %s", e)
+
+            yield event({"stage": "Running analysis", "step": 2, "total": 4})
+            time.sleep(2)
+            analysis_raw = get_ai_response(
+                analysis_prompt(df.columns.tolist(), history, prompt)
+            )
+            code = fix_python_syntax(strip_code_fences(analysis_raw))
+            local_scope = {"df": df, "pd": pd}
+            safe_exec(code, local_scope)
+            final_numeric_result = local_scope.get("result", "No result")
+
+            yield event({"stage": "Generating insight", "step": 3, "total": 4})
+            time.sleep(2)
+            insight_text = get_ai_response(
+                insight_prompt(prompt, final_numeric_result)
+            )
+
+            yield event({"stage": "Creating chart", "step": 4, "total": 4})
+            chart_b64 = None
+            try:
+                time.sleep(2)
+                chart_raw = get_ai_response(
+                    chart_prompt(
+                        df.columns.tolist(), prompt, final_numeric_result
+                    )
+                )
+                chart_code = fix_python_syntax(strip_code_fences(chart_raw))
+                plt.close("all")
+                chart_scope = {"df": df, "pd": pd, "plt": plt}
+                safe_exec(chart_code, chart_scope)
+                fig = chart_scope.get("fig", plt.gcf())
+                buf = io.BytesIO()
+                fig.savefig(
+                    buf, format="png", dpi=100, bbox_inches="tight"
+                )
+                plt.close("all")
+                buf.seek(0)
+                chart_b64 = base64.b64encode(buf.getvalue()).decode()
+            except Exception as e:
+                logger.warning("Chart failed: %s", e)
+
+            yield event({
+                "stage": "complete",
+                "insight": insight_text,
+                "chart": chart_b64,
+            })
+
+        except Exception as e:
+            logger.exception("Stream analysis failed")
+            yield event({"stage": "error", "error": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/data-quality")
