@@ -13,27 +13,36 @@
 ## Architecture
 
 ```
-┌─────────────────┐       POST /analyze        ┌─────────────────────────────┐
-│                 │  ───────────────────────►  │                             │
-│    Streamlit    │   file + question + history │       FastAPI Backend       │
-│    Frontend     │                            │                             │
-│                 │  ◄───────────────────────  │  1. Parse CSV / Excel       │
-│  • File upload  │       JSON { insight }     │  2. AI → cleaning code      │
-│  • Chat UI      │                            │  3. AI → analysis code      │
-│  • DOCX export  │                            │  4. Execute Python (exec)   │
-└─────────────────┘                            │  5. AI → plain-English      │
-                                               │     business insight        │
-                                               └──────────┬──────────────────┘
-                                                          │
-                                                          │ OpenAI-compatible API
-                                                          ▼
-                                               ┌─────────────────────────────┐
-                                               │   Google Gemini 2.5 Flash   │
-                                               │   (via OpenAI SDK)          │
-                                               └─────────────────────────────┘
+┌─────────────────────┐    POST /analyze       ┌──────────────────────────────────┐
+│                     │  ─────────────────►    │          FastAPI Backend          │
+│  Streamlit Frontend │  file + question       │                                  │
+│                     │                        │  1. Parse CSV / Excel            │
+│  • File upload      │  ◄─────────────────    │  2. AI → cleaning code           │
+│  • Chat UI          │  JSON { insight,       │  3. AI → analysis code           │
+│  • Chart display    │         chart }        │  4. Sandboxed exec() ─┐          │
+│  • DOCX export      │                        │  5. AI → business     │ 3-layer  │
+│  • Data quality     │    POST /data-quality   │     insight           │ sandbox  │
+│    sidebar panel    │  ─────────────────►    │  6. AI → matplotlib   │ security │
+│                     │  ◄─────────────────    │     chart (base64)  ──┘          │
+│                     │  JSON { nulls,         │                                  │
+│                     │    duplicates,          │  /data-quality                   │
+│                     │    outliers }           │  • Null analysis                 │
+└─────────────────────┘                        │  • Duplicate detection            │
+                                               │  • Outlier detection (IQR)       │
+                                               └──────────────┬───────────────────┘
+                                                              │
+                                                              │ OpenAI-compatible API
+                                                              ▼
+                                               ┌──────────────────────────────────┐
+                                               │    Google Gemini 3.6 Flash       │
+                                               │    (via OpenAI SDK)              │
+                                               └──────────────────────────────────┘
 ```
 
-**Key design decision:** The AI does not guess answers. It writes deterministic Python code that runs against the real data, so every number is mathematically verified — not hallucinated.
+**Key design decisions:**
+- The AI does not guess answers. It writes deterministic Python code that runs against the real data, so every number is mathematically verified — not hallucinated.
+- All AI-generated code runs inside a **3-layer sandbox** (static blocklist, restricted builtins, thread-based timeout) — never raw `exec()`.
+- Data quality is assessed **before** the user asks any question, surfacing issues like nulls and outliers upfront.
 
 ---
 
@@ -43,24 +52,41 @@
 |-------|-----------|
 | **Frontend** | Streamlit (Python) |
 | **Backend** | FastAPI + Uvicorn |
-| **AI Model** | Google Gemini 2.5 Flash via OpenAI-compatible API |
+| **AI Model** | Google Gemini 3.6 Flash via OpenAI-compatible API |
 | **Data Processing** | Pandas, openpyxl |
+| **Visualization** | Matplotlib (AI-generated charts) |
+| **Security** | 3-layer sandboxed `exec()` (blocklist + restricted builtins + timeout) |
 | **Export** | python-docx (Word reports) |
-| **CI/CD** | GitHub Actions (ruff lint + pytest) |
+| **Testing** | pytest (58 tests) + ruff linter |
+| **CI/CD** | GitHub Actions (lint + test on every push) |
 | **Deployment** | Docker Compose · Render |
+
+---
+
+## Features
+
+- **Natural Language Queries** — Ask questions about your data in plain English
+- **AI-Generated Charts** — Every insight comes with an auto-generated matplotlib visualization
+- **Data Quality Report** — Automatic scan for nulls, duplicates, and outliers on upload
+- **Sandboxed Execution** — AI-generated code runs in a 3-layer security sandbox
+- **Conversation Memory** — Follow-up questions carry full chat history for contextual answers
+- **Word Export** — Download the full analysis session as a `.docx` report
+- **58 Unit Tests** — Full coverage across API, sandbox, prompts, and data quality
 
 ---
 
 ## How It Works
 
 1. **Upload** — CSV or Excel file (up to 200 MB) via the sidebar
-2. **Ask** — Type a plain-English question (e.g. *"What were the top 3 loss-making products?"*)
-3. **AI Pipeline** — The backend runs three LLM calls:
+2. **Quality Check** — The system automatically scans for missing values, duplicates, and outliers (IQR method) and displays a report in the sidebar
+3. **Ask** — Type a plain-English question (e.g. *"What were the top 3 loss-making products?"*)
+4. **AI Pipeline** — The backend runs four LLM calls, each sandboxed:
    - **Clean** — generates Python to fix data types, nulls, formatting
    - **Analyze** — generates Python to compute the answer, stores it in `result`
-   - **Explain** — translates the numeric result into a 2-sentence business insight
-4. **Chat** — Ask follow-up questions; the full conversation history is passed to the model
-5. **Export** — Download the session as a `.docx` report
+   - **Explain** — translates the numeric result into a plain-English business insight
+   - **Visualize** — generates a matplotlib chart to accompany the insight (returned as base64 PNG)
+5. **Chat** — Ask follow-up questions; the full conversation history is passed to the model
+6. **Export** — Download the session as a `.docx` report
 
 ---
 
