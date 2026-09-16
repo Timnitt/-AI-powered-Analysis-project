@@ -130,6 +130,56 @@ with st.sidebar:
     )
     st.caption(f"Max file size: {MAX_FILE_SIZE_MB}MB")
 
+if uploaded_file is not None:
+    cache_key = f"dq_{uploaded_file.name}_{uploaded_file.size}"
+    if cache_key != st.session_state.get("dq_cache_key"):
+        with st.sidebar:
+            with st.spinner("Scanning data quality..."):
+                try:
+                    dq_resp = requests.post(
+                        f"{BACKEND_URL}/data-quality",
+                        files={
+                            "file": (
+                                uploaded_file.name,
+                                uploaded_file.getvalue(),
+                            )
+                        },
+                        timeout=60,
+                    )
+                    if dq_resp.status_code == 200:
+                        st.session_state.dq_report = dq_resp.json()
+                        st.session_state.dq_cache_key = cache_key
+                except Exception:
+                    pass
+
+    dq = st.session_state.get("dq_report")
+    if dq:
+        with st.sidebar:
+            st.markdown("---")
+            st.subheader("Data Quality Report")
+            st.metric("Rows", f"{dq['rows']:,}")
+            st.metric("Columns", dq["columns"])
+            st.metric("Duplicates", f"{dq['duplicate_rows']:,}")
+
+            if dq["nulls"]:
+                st.markdown("**Missing Values:**")
+                for col, info in dq["nulls"].items():
+                    st.caption(
+                        f"  {col}: {info['count']:,} "
+                        f"({info['pct']}%)"
+                    )
+
+            if dq["outliers"]:
+                st.markdown("**Outliers (IQR):**")
+                for col, count in dq["outliers"].items():
+                    st.caption(f"  {col}: {count:,}")
+
+            for issue in dq["issues"]:
+                if "No quality" in issue:
+                    st.success(issue)
+                else:
+                    st.warning(issue)
+
 if "messages" in st.session_state and st.session_state.messages:
     st.sidebar.markdown("---")
     st.sidebar.subheader("Export Results")

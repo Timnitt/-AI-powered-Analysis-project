@@ -164,5 +164,83 @@ async def analyze_data(
         return {"insight": f"System Error: {e!s}"}
 
 
+@app.post("/data-quality")
+async def data_quality(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        if len(contents) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="File too large.",
+            )
+
+        file_data = io.BytesIO(contents)
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file_data, encoding="latin-1")
+        else:
+            df = pd.read_excel(file_data)
+
+        total_rows = len(df)
+        total_cols = len(df.columns)
+
+        null_counts = df.isnull().sum()
+        nulls = {}
+        for col, v in null_counts.items():
+            if v > 0:
+                pct = round(v / total_rows * 100, 1) if total_rows else 0
+                nulls[col] = {"count": int(v), "pct": pct}
+
+        duplicate_rows = int(df.duplicated().sum())
+
+        numeric_cols = df.select_dtypes(include="number").columns
+        outliers = {}
+        for col in numeric_cols:
+            q1 = df[col].quantile(0.25)
+            q3 = df[col].quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+            count = int(
+                ((df[col] < lower) | (df[col] > upper)).sum()
+            )
+            if count > 0:
+                outliers[col] = count
+
+        dtypes = df.dtypes.astype(str).to_dict()
+
+        preview = df.head(5).fillna("").to_dict(orient="records")
+
+        issues = []
+        if nulls:
+            issues.append(
+                f"{len(nulls)} column(s) have missing values"
+            )
+        if duplicate_rows:
+            issues.append(f"{duplicate_rows} duplicate row(s)")
+        if outliers:
+            issues.append(
+                f"{len(outliers)} column(s) have outliers"
+            )
+        if not issues:
+            issues.append("No quality issues detected")
+
+        return {
+            "rows": total_rows,
+            "columns": total_cols,
+            "dtypes": dtypes,
+            "nulls": nulls,
+            "duplicate_rows": duplicate_rows,
+            "outliers": outliers,
+            "issues": issues,
+            "preview": preview,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Data quality check failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
