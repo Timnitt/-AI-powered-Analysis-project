@@ -150,3 +150,13 @@ class TestAnalyzeEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["insight"] == insight_text
+
+
+class TestHealthEndpoint:
+    def test_returns_healthy(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "healthy"
+        assert "model" in data
+        assert data["max_file_size_mb"] == 200

@@ -181,6 +181,21 @@ if uploaded_file is not None:
                 else:
                     st.warning(issue)
 
+            if dq.get("preview"):
+                with st.expander("Preview (first 5 rows)", expanded=False):
+                    import pandas as pd
+
+                    st.dataframe(
+                        pd.DataFrame(dq["preview"]),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            if dq.get("dtypes"):
+                with st.expander("Column Types", expanded=False):
+                    for col, dtype in dq["dtypes"].items():
+                        st.caption(f"{col}: `{dtype}`")
+
 if "messages" in st.session_state and st.session_state.messages:
     st.sidebar.markdown("---")
     st.sidebar.subheader("Export Results")

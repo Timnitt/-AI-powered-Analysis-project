@@ -339,5 +339,14 @@ async def data_quality(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "model": MODEL_ID,
+        "max_file_size_mb": MAX_FILE_SIZE_BYTES // (1024 * 1024),
+    }
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
