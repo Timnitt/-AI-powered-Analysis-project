@@ -5,6 +5,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def _clear_clean_cache():
+    from main import _clean_cache
+
+    _clean_cache.clear()
+
+
 @pytest.fixture()
 def client(monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -87,6 +88,55 @@ def strip_code_fences(raw: str) -> str:
     return raw.strip().replace("```python", "").replace("```", "")
 
 
+_clean_cache: dict[str, pd.DataFrame] = {}
+MAX_CACHE_ENTRIES = 5
+
+
+def _get_or_clean_df(
+    contents: bytes, filename: str
+) -> tuple[pd.DataFrame, bool]:
+    """Parse and clean a file, using cache for repeat uploads.
+
+    Returns (cleaned_df, was_cached).
+    """
+    key = hashlib.md5(contents).hexdigest()  # noqa: S324
+
+    if key in _clean_cache:
+        logger.info("Clean cache hit for %s", filename)
+        return _clean_cache[key].copy(), True
+
+    file_data = io.BytesIO(contents)
+    if filename.endswith(".csv"):
+        df = pd.read_csv(file_data, encoding="latin-1")
+    else:
+        df = pd.read_excel(file_data)
+
+    data_audit = {
+        "columns": df.columns.tolist(),
+        "dtypes": df.dtypes.astype(str).to_dict(),
+    }
+    clean_raw = get_ai_response(cleaning_prompt(data_audit))
+    clean_code = fix_python_syntax(strip_code_fences(clean_raw))
+
+    cleaning_scope = {"df": df, "pd": pd}
+    try:
+        safe_exec(clean_code, cleaning_scope)
+        df = cleaning_scope.get("df", df)
+    except SandboxViolation as e:
+        logger.warning("Cleaning code blocked by sandbox: %s", e)
+    except SandboxTimeout:
+        logger.warning("Cleaning code timed out, using raw data")
+    except Exception as e:
+        logger.warning("Cleaning failed, using raw data: %s", e)
+
+    if len(_clean_cache) >= MAX_CACHE_ENTRIES:
+        oldest = next(iter(_clean_cache))
+        del _clean_cache[oldest]
+    _clean_cache[key] = df.copy()
+
+    return df, False
+
+
 @app.post("/analyze")
 async def analyze_data(
     file: UploadFile = File(...),
@@ -101,31 +151,10 @@ async def analyze_data(
                 detail="File too large. Upload a file with size less than 200MB.",
             )
 
-        file_data = io.BytesIO(contents)
-        if file.filename.endswith(".csv"):
-            df = pd.read_csv(file_data, encoding="latin-1")
-        else:
-            df = pd.read_excel(file_data)
+        df, was_cached = _get_or_clean_df(contents, file.filename)
 
-        data_audit = {
-            "columns": df.columns.tolist(),
-            "dtypes": df.dtypes.astype(str).to_dict(),
-        }
-        clean_raw = get_ai_response(cleaning_prompt(data_audit))
-        clean_code = fix_python_syntax(strip_code_fences(clean_raw))
-
-        cleaning_scope = {"df": df, "pd": pd}
-        try:
-            safe_exec(clean_code, cleaning_scope)
-            df = cleaning_scope.get("df", df)
-        except SandboxViolation as e:
-            logger.warning("Cleaning code blocked by sandbox: %s", e)
-        except SandboxTimeout:
-            logger.warning("Cleaning code timed out, using raw data")
-        except Exception as e:
-            logger.warning("Data cleaning step failed, continuing with raw data: %s", e)
-
-        time.sleep(2)
+        if not was_cached:
+            time.sleep(2)
         analysis_raw = get_ai_response(
             analysis_prompt(df.columns.tolist(), history, prompt)
         )
@@ -186,30 +215,37 @@ async def analyze_data_stream(
 
     def generate():
         try:
-            file_data = io.BytesIO(contents)
-            if filename.endswith(".csv"):
-                df = pd.read_csv(file_data, encoding="latin-1")
+            key = hashlib.md5(contents).hexdigest()  # noqa: S324
+            cached = key in _clean_cache
+
+            if cached:
+                total = 3
+                step = 0
+                yield event({
+                    "stage": "Using cached clean data",
+                    "step": 0,
+                    "total": total,
+                    "cached": True,
+                })
             else:
-                df = pd.read_excel(file_data)
+                total = 4
+                step = 1
+                yield event({
+                    "stage": "Cleaning data",
+                    "step": 1,
+                    "total": total,
+                })
 
-            yield event({"stage": "Cleaning data", "step": 1, "total": 4})
-            data_audit = {
-                "columns": df.columns.tolist(),
-                "dtypes": df.dtypes.astype(str).to_dict(),
-            }
-            clean_raw = get_ai_response(cleaning_prompt(data_audit))
-            clean_code = fix_python_syntax(strip_code_fences(clean_raw))
-            cleaning_scope = {"df": df, "pd": pd}
-            try:
-                safe_exec(clean_code, cleaning_scope)
-                df = cleaning_scope.get("df", df)
-            except (SandboxViolation, SandboxTimeout) as e:
-                logger.warning("Cleaning blocked/timed out: %s", e)
-            except Exception as e:
-                logger.warning("Cleaning failed: %s", e)
+            df, _ = _get_or_clean_df(contents, filename)
 
-            yield event({"stage": "Running analysis", "step": 2, "total": 4})
-            time.sleep(2)
+            step += 1
+            yield event({
+                "stage": "Running analysis",
+                "step": step,
+                "total": total,
+            })
+            if not cached:
+                time.sleep(2)
             analysis_raw = get_ai_response(
                 analysis_prompt(df.columns.tolist(), history, prompt)
             )
@@ -218,13 +254,23 @@ async def analyze_data_stream(
             safe_exec(code, local_scope)
             final_numeric_result = local_scope.get("result", "No result")
 
-            yield event({"stage": "Generating insight", "step": 3, "total": 4})
+            step += 1
+            yield event({
+                "stage": "Generating insight",
+                "step": step,
+                "total": total,
+            })
             time.sleep(2)
             insight_text = get_ai_response(
                 insight_prompt(prompt, final_numeric_result)
             )
 
-            yield event({"stage": "Creating chart", "step": 4, "total": 4})
+            step += 1
+            yield event({
+                "stage": "Creating chart",
+                "step": step,
+                "total": total,
+            })
             chart_b64 = None
             try:
                 time.sleep(2)
